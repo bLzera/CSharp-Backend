@@ -9,4 +9,5 @@ public class User
 
     public ICollection<Note> Notes { get; set; } = [];
     public ICollection<NoteGroup> NoteGroups { get; set; } = [];
+    public ICollection<RefreshToken> RefreshTokens { get; set; } = [];
 }

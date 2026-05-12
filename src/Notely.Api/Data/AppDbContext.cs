@@ -8,6 +8,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<User> Users => Set<User>();
     public DbSet<Note> Notes => Set<Note>();
     public DbSet<NoteGroup> NoteGroups => Set<NoteGroup>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -27,6 +28,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasOne(g => g.User)
              .WithMany(u => u.NoteGroups)
              .HasForeignKey(g => g.UserId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<RefreshToken>(e =>
+        {
+            e.HasKey(rt => rt.Id);
+            e.Property(rt => rt.TokenHash).IsRequired().HasMaxLength(64);
+            e.HasIndex(rt => rt.TokenHash).IsUnique();
+            e.HasOne(rt => rt.User)
+             .WithMany(u => u.RefreshTokens)
+             .HasForeignKey(rt => rt.UserId)
              .OnDelete(DeleteBehavior.Cascade);
         });
 

@@ -28,7 +28,8 @@ cp .env.example .env
 | `JWT_SECRET` | *(ver .env.example)* | Chave de assinatura JWT — **trocar em produção** |
 | `JWT_ISSUER` | `notely-api` | Issuer do token |
 | `JWT_AUDIENCE` | `notely-client` | Audience do token |
-| `JWT_EXPIRES_HOURS` | `24` | Duração do token em horas |
+| `JWT_EXPIRES_HOURS` | `1` | Duração do access token em horas |
+| `JWT_REFRESH_TOKEN_EXPIRY_DAYS` | `7` | Duração do refresh token em dias |
 
 ## Migrations
 
