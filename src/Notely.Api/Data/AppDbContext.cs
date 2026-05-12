@@ -7,6 +7,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 {
     public DbSet<User> Users => Set<User>();
     public DbSet<Note> Notes => Set<Note>();
+    public DbSet<NoteGroup> NoteGroups => Set<NoteGroup>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -18,6 +19,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(u => u.PasswordHash).IsRequired();
         });
 
+        builder.Entity<NoteGroup>(e =>
+        {
+            e.HasKey(g => g.Id);
+            e.Property(g => g.Name).IsRequired().HasMaxLength(100);
+            e.Property(g => g.Description).HasMaxLength(500);
+            e.HasOne(g => g.User)
+             .WithMany(u => u.NoteGroups)
+             .HasForeignKey(g => g.UserId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
         builder.Entity<Note>(e =>
         {
             e.HasKey(n => n.Id);
@@ -27,6 +39,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
              .WithMany(u => u.Notes)
              .HasForeignKey(n => n.UserId)
              .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(n => n.NoteGroup)
+             .WithMany(g => g.Notes)
+             .HasForeignKey(n => n.NoteGroupId)
+             .OnDelete(DeleteBehavior.SetNull);
         });
     }
 }

@@ -14,8 +14,8 @@ public class NotesController(NoteService noteService) : ControllerBase
     private Guid UserId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
     [HttpGet]
-    public async Task<IActionResult> GetAll() =>
-        Ok(await noteService.GetAllAsync(UserId));
+    public async Task<IActionResult> GetAll([FromQuery] Guid? groupId = null) =>
+        Ok(await noteService.GetAllAsync(UserId, groupId));
 
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id)
@@ -28,6 +28,7 @@ public class NotesController(NoteService noteService) : ControllerBase
     public async Task<IActionResult> Create(CreateNoteRequest req)
     {
         var note = await noteService.CreateAsync(UserId, req);
+        if (note is null) return UnprocessableEntity("NoteGroup not found.");
         return CreatedAtAction(nameof(GetById), new { id = note.Id }, note);
     }
 

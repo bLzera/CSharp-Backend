@@ -31,6 +31,7 @@ builder.Services
 builder.Services.AddAuthorization();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<NoteService>();
+builder.Services.AddScoped<NoteGroupService>();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();

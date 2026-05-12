@@ -8,4 +8,5 @@ public class User
     public DateTime CreatedAt { get; set; }
 
     public ICollection<Note> Notes { get; set; } = [];
+    public ICollection<NoteGroup> NoteGroups { get; set; } = [];
 }

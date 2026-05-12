@@ -18,6 +18,39 @@ namespace Notely.Api.Data.Migrations
                 .HasAnnotation("ProductVersion", "8.0.26")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
+            modelBuilder.Entity("Notely.Api.Models.RefreshToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsRevoked")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("RefreshTokens");
+                });
+
             modelBuilder.Entity("Notely.Api.Models.Note", b =>
                 {
                     b.Property<Guid>("Id")
@@ -30,6 +63,9 @@ namespace Notely.Api.Data.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("NoteGroupId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -44,9 +80,42 @@ namespace Notely.Api.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("NoteGroupId");
+
                     b.HasIndex("UserId");
 
                     b.ToTable("Notes");
+                });
+
+            modelBuilder.Entity("Notely.Api.Models.NoteGroup", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("NoteGroups");
                 });
 
             modelBuilder.Entity("Notely.Api.Models.User", b =>
@@ -77,8 +146,26 @@ namespace Notely.Api.Data.Migrations
 
             modelBuilder.Entity("Notely.Api.Models.Note", b =>
                 {
+                    b.HasOne("Notely.Api.Models.NoteGroup", "NoteGroup")
+                        .WithMany("Notes")
+                        .HasForeignKey("NoteGroupId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Notely.Api.Models.User", "User")
                         .WithMany("Notes")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("NoteGroup");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Notely.Api.Models.NoteGroup", b =>
+                {
+                    b.HasOne("Notely.Api.Models.User", "User")
+                        .WithMany("NoteGroups")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -88,7 +175,27 @@ namespace Notely.Api.Data.Migrations
 
             modelBuilder.Entity("Notely.Api.Models.User", b =>
                 {
+                    b.Navigation("NoteGroups");
+
                     b.Navigation("Notes");
+
+                    b.Navigation("RefreshTokens");
+                });
+
+            modelBuilder.Entity("Notely.Api.Models.NoteGroup", b =>
+                {
+                    b.Navigation("Notes");
+                });
+
+            modelBuilder.Entity("Notely.Api.Models.RefreshToken", b =>
+                {
+                    b.HasOne("Notely.Api.Models.User", "User")
+                        .WithMany("RefreshTokens")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 #pragma warning restore 612, 618
         }

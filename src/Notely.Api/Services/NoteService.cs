@@ -7,9 +7,9 @@ namespace Notely.Api.Services;
 
 public class NoteService(AppDbContext db)
 {
-    public async Task<IEnumerable<NoteResponse>> GetAllAsync(Guid userId) =>
+    public async Task<IEnumerable<NoteResponse>> GetAllAsync(Guid userId, Guid? groupId = null) =>
         await db.Notes
-            .Where(n => n.UserId == userId)
+            .Where(n => n.UserId == userId && (groupId == null || n.NoteGroupId == groupId))
             .OrderByDescending(n => n.UpdatedAt)
             .Select(n => ToResponse(n))
             .ToListAsync();
@@ -20,13 +20,20 @@ public class NoteService(AppDbContext db)
             .Select(n => ToResponse(n))
             .FirstOrDefaultAsync();
 
-    public async Task<NoteResponse> CreateAsync(Guid userId, CreateNoteRequest req)
+    public async Task<NoteResponse?> CreateAsync(Guid userId, CreateNoteRequest req)
     {
+        if (req.NoteGroupId.HasValue)
+        {
+            var groupExists = await db.NoteGroups.AnyAsync(g => g.Id == req.NoteGroupId && g.UserId == userId);
+            if (!groupExists) return null;
+        }
+
         var now = DateTime.UtcNow;
         var note = new Note
         {
             Id = Guid.NewGuid(),
             UserId = userId,
+            NoteGroupId = req.NoteGroupId,
             Title = req.Title,
             Content = req.Content,
             CreatedAt = now,
@@ -40,11 +47,18 @@ public class NoteService(AppDbContext db)
 
     public async Task<NoteResponse?> UpdateAsync(Guid userId, Guid noteId, UpdateNoteRequest req)
     {
+        if (req.NoteGroupId.HasValue)
+        {
+            var groupExists = await db.NoteGroups.AnyAsync(g => g.Id == req.NoteGroupId && g.UserId == userId);
+            if (!groupExists) return null;
+        }
+
         var note = await db.Notes.FirstOrDefaultAsync(n => n.Id == noteId && n.UserId == userId);
         if (note is null) return null;
 
         note.Title = req.Title;
         note.Content = req.Content;
+        note.NoteGroupId = req.NoteGroupId;
         note.UpdatedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync();
@@ -62,5 +76,5 @@ public class NoteService(AppDbContext db)
     }
 
     private static NoteResponse ToResponse(Note n) =>
-        new(n.Id, n.Title, n.Content, n.CreatedAt, n.UpdatedAt);
+        new(n.Id, n.Title, n.Content, n.NoteGroupId, n.CreatedAt, n.UpdatedAt);
 }
