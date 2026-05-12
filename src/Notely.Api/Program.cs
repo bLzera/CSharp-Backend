@@ -29,9 +29,9 @@ builder.Services
     });
 
 builder.Services.AddAuthorization();
-builder.Services.AddScoped<AuthService>();
-builder.Services.AddScoped<NoteService>();
-builder.Services.AddScoped<NoteGroupService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<INoteService, NoteService>();
+builder.Services.AddScoped<INoteGroupService, NoteGroupService>();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -48,8 +48,9 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
-using (var scope = app.Services.CreateScope())
+if (!app.Environment.IsEnvironment("Testing"))
 {
+    using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
 }

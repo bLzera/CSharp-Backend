@@ -9,7 +9,7 @@ namespace Notely.Api.Controllers;
 [ApiController]
 [Route("note-groups")]
 [Authorize]
-public class NoteGroupsController(NoteGroupService noteGroupService) : ControllerBase
+public class NoteGroupsController(INoteGroupService noteGroupService) : ControllerBase
 {
     private Guid UserId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 

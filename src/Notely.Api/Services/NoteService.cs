@@ -5,7 +5,7 @@ using Notely.Api.Models;
 
 namespace Notely.Api.Services;
 
-public class NoteService(AppDbContext db)
+public class NoteService(AppDbContext db) : INoteService
 {
     public async Task<IEnumerable<NoteResponse>> GetAllAsync(Guid userId, Guid? groupId = null) =>
         await db.Notes

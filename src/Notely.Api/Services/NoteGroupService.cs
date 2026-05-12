@@ -5,7 +5,7 @@ using Notely.Api.Models;
 
 namespace Notely.Api.Services;
 
-public class NoteGroupService(AppDbContext db)
+public class NoteGroupService(AppDbContext db) : INoteGroupService
 {
     public async Task<IEnumerable<NoteGroupResponse>> GetAllAsync(Guid userId) =>
         await db.NoteGroups

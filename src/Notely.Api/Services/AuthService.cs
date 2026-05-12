@@ -10,7 +10,7 @@ using Notely.Api.Models;
 
 namespace Notely.Api.Services;
 
-public class AuthService(AppDbContext db, IConfiguration config)
+public class AuthService(AppDbContext db, IConfiguration config) : IAuthService
 {
     public async Task<AuthResponse?> RegisterAsync(RegisterRequest req)
     {

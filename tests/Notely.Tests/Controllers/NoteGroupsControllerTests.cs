@@ -1,42 +1,96 @@
 using System.Net;
 using System.Net.Http.Json;
 using FluentAssertions;
+using NSubstitute;
+using NSubstitute.ReturnsExtensions;
 using Notely.Api.DTOs.NoteGroups;
 using Notely.Tests.Common.Factories;
 using Notely.Tests.Common.Fixtures;
 
 namespace Notely.Tests.Controllers;
 
-public class NoteGroupsControllerTests(IntegrationWebAppFactory factory)
-    : IClassFixture<IntegrationWebAppFactory>
+public class NoteGroupsControllerTests : IClassFixture<IntegrationWebAppFactory>, IAsyncLifetime
 {
-    private readonly HttpClient _client = factory.CreateClient();
+    private readonly IntegrationWebAppFactory _factory;
+    private HttpClient _client = null!;
+    private Guid _userId;
+
+    public NoteGroupsControllerTests(IntegrationWebAppFactory factory)
+    {
+        _factory = factory;
+    }
+
+    public Task InitializeAsync()
+    {
+        _factory.ResetMocks();
+        _userId = Guid.NewGuid();
+        _client = _factory.CreateClient();
+        _client.WithJwt(AuthHelper.CreateToken(_userId));
+        return Task.CompletedTask;
+    }
+
+    public Task DisposeAsync() => Task.CompletedTask;
+
+    private static NoteGroupResponse SampleGroup(Guid? id = null, string name = "Trabalho") => new(
+        id ?? Guid.NewGuid(),
+        name,
+        "desc",
+        0,
+        DateTime.UtcNow,
+        DateTime.UtcNow
+    );
 
     [Fact]
-    public async Task GetAll_Authenticated_Returns200()
+    public async Task GetAll_Authenticated_Returns200WithList()
     {
-        var token = await AuthHelper.RegisterAndGetTokenAsync(_client);
+        _factory.NoteGroupService.GetAllAsync(_userId).Returns(new[] { SampleGroup(), SampleGroup() });
 
-        var response = await _client.WithJwt(token).GetAsync("/note-groups");
+        var response = await _client.GetAsync("/note-groups");
+        var body = await response.Content.ReadFromJsonAsync<List<NoteGroupResponse>>();
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
+        body.Should().HaveCount(2);
     }
 
     [Fact]
     public async Task GetAll_WithoutToken_Returns401()
     {
-        var response = await _client.GetAsync("/note-groups");
-
+        var anon = _factory.CreateClient();
+        var response = await anon.GetAsync("/note-groups");
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task GetById_Existing_Returns200()
+    {
+        var group = SampleGroup();
+        _factory.NoteGroupService.GetByIdAsync(_userId, group.Id).Returns(group);
+
+        var response = await _client.GetAsync($"/note-groups/{group.Id}");
+        var body = await response.Content.ReadFromJsonAsync<NoteGroupResponse>();
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        body!.Id.Should().Be(group.Id);
+    }
+
+    [Fact]
+    public async Task GetById_NotFound_Returns404()
+    {
+        _factory.NoteGroupService.GetByIdAsync(_userId, Arg.Any<Guid>()).ReturnsNull();
+
+        var response = await _client.GetAsync($"/note-groups/{Guid.NewGuid()}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
     public async Task Create_ValidRequest_Returns201WithLocation()
     {
-        var token = await AuthHelper.RegisterAndGetTokenAsync(_client);
         var req = NoteGroupFactory.CreateRequest();
+        var created = SampleGroup(name: req.Name);
+        _factory.NoteGroupService.CreateAsync(_userId, Arg.Any<CreateNoteGroupRequest>()).Returns(created);
 
-        var response = await _client.WithJwt(token).PostAsJsonAsync("/note-groups", req);
+        var response = await _client.PostAsJsonAsync("/note-groups", req);
         var body = await response.Content.ReadFromJsonAsync<NoteGroupResponse>();
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
@@ -45,38 +99,14 @@ public class NoteGroupsControllerTests(IntegrationWebAppFactory factory)
     }
 
     [Fact]
-    public async Task GetById_ExistingGroup_Returns200()
+    public async Task Update_Existing_Returns200()
     {
-        var token = await AuthHelper.RegisterAndGetTokenAsync(_client);
-        var group = await CreateGroupAsync(token);
-
-        var response = await _client.WithJwt(token).GetAsync($"/note-groups/{group.Id}");
-        var body = await response.Content.ReadFromJsonAsync<NoteGroupResponse>();
-
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        body!.Id.Should().Be(group.Id);
-    }
-
-    [Fact]
-    public async Task GetById_GroupOfOtherUser_Returns404()
-    {
-        var token1 = await AuthHelper.RegisterAndGetTokenAsync(_client);
-        var token2 = await AuthHelper.RegisterAndGetTokenAsync(_client);
-        var group = await CreateGroupAsync(token1);
-
-        var response = await _client.WithJwt(token2).GetAsync($"/note-groups/{group.Id}");
-
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
-    }
-
-    [Fact]
-    public async Task Update_OwnGroup_Returns200()
-    {
-        var token = await AuthHelper.RegisterAndGetTokenAsync(_client);
-        var group = await CreateGroupAsync(token);
+        var groupId = Guid.NewGuid();
         var req = NoteGroupFactory.UpdateRequest();
+        var updated = SampleGroup(groupId, req.Name);
+        _factory.NoteGroupService.UpdateAsync(_userId, groupId, Arg.Any<UpdateNoteGroupRequest>()).Returns(updated);
 
-        var response = await _client.WithJwt(token).PutAsJsonAsync($"/note-groups/{group.Id}", req);
+        var response = await _client.PutAsJsonAsync($"/note-groups/{groupId}", req);
         var body = await response.Content.ReadFromJsonAsync<NoteGroupResponse>();
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -84,46 +114,34 @@ public class NoteGroupsControllerTests(IntegrationWebAppFactory factory)
     }
 
     [Fact]
-    public async Task Update_GroupOfOtherUser_Returns404()
+    public async Task Update_NotFound_Returns404()
     {
-        var token1 = await AuthHelper.RegisterAndGetTokenAsync(_client);
-        var token2 = await AuthHelper.RegisterAndGetTokenAsync(_client);
-        var group = await CreateGroupAsync(token1);
+        _factory.NoteGroupService.UpdateAsync(_userId, Arg.Any<Guid>(), Arg.Any<UpdateNoteGroupRequest>())
+            .ReturnsNull();
 
-        var response = await _client.WithJwt(token2)
-            .PutAsJsonAsync($"/note-groups/{group.Id}", NoteGroupFactory.UpdateRequest());
+        var response = await _client.PutAsJsonAsync($"/note-groups/{Guid.NewGuid()}",
+            NoteGroupFactory.UpdateRequest());
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
-    public async Task Delete_OwnGroup_Returns204()
+    public async Task Delete_Existing_Returns204()
     {
-        var token = await AuthHelper.RegisterAndGetTokenAsync(_client);
-        var group = await CreateGroupAsync(token);
+        _factory.NoteGroupService.DeleteAsync(_userId, Arg.Any<Guid>()).Returns(true);
 
-        var response = await _client.WithJwt(token).DeleteAsync($"/note-groups/{group.Id}");
+        var response = await _client.DeleteAsync($"/note-groups/{Guid.NewGuid()}");
 
         response.StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
 
     [Fact]
-    public async Task Delete_GroupOfOtherUser_Returns404()
+    public async Task Delete_NotFound_Returns404()
     {
-        var token1 = await AuthHelper.RegisterAndGetTokenAsync(_client);
-        var token2 = await AuthHelper.RegisterAndGetTokenAsync(_client);
-        var group = await CreateGroupAsync(token1);
+        _factory.NoteGroupService.DeleteAsync(_userId, Arg.Any<Guid>()).Returns(false);
 
-        var response = await _client.WithJwt(token2).DeleteAsync($"/note-groups/{group.Id}");
+        var response = await _client.DeleteAsync($"/note-groups/{Guid.NewGuid()}");
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
-    }
-
-    private async Task<NoteGroupResponse> CreateGroupAsync(string token)
-    {
-        var response = await _client.WithJwt(token)
-            .PostAsJsonAsync("/note-groups", NoteGroupFactory.CreateRequest());
-        response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<NoteGroupResponse>())!;
     }
 }

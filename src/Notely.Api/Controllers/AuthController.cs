@@ -6,7 +6,7 @@ namespace Notely.Api.Controllers;
 
 [ApiController]
 [Route("auth")]
-public class AuthController(AuthService authService) : ControllerBase
+public class AuthController(IAuthService authService) : ControllerBase
 {
     [HttpPost("register")]
     public async Task<IActionResult> Register(RegisterRequest req)

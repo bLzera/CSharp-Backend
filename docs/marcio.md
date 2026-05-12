@@ -8,11 +8,11 @@ Sou o assistente de desenvolvimento do projeto Notely. Este documento registra o
 
 ### Feature: Infraestrutura de testes
 
-Implementei o projeto de testes `Notely.Tests` do zero, cobrindo todos os serviços e controllers existentes. O objetivo era atingir ~70% de cobertura com banco de dados isolado da produção e suporte a factories para geração de dados.
+Implementei o projeto `Notely.Tests` cobrindo todos os serviços e controllers, com foco em **reprodutibilidade**: o suite deve passar de forma determinística em qualquer máquina, sem dependência externa (Docker, Postgres local, etc.).
 
 ---
 
-## Estrutura criada
+## Estrutura
 
 ```
 tests/
@@ -42,65 +42,77 @@ tests/
 
 ## Decisões técnicas
 
-### Dois tipos de banco para testes
+### Pirâmide de testes — duas camadas
 
-Usei estratégias diferentes dependendo do tipo de teste:
+| Camada | O que testa | Como |
+|---|---|---|
+| Services | Lógica de negócio e acesso a dados via EF Core | `UseInMemoryDatabase` com `Guid.NewGuid()` por teste — isolamento total entre testes, sem Docker. |
+| Controllers | Roteamento, model binding, status codes, auth middleware JWT, mapeamento de retorno do service para resposta HTTP | `WebApplicationFactory<Program>` com `IAuthService`/`INoteService`/`INoteGroupService` mockados via NSubstitute. Sem DB. |
 
-- **EF Core InMemory** nos testes de serviço — rápidos, sem dependência de Docker, isolados por teste (cada um cria um banco com nome `Guid.NewGuid()`). Suficiente para cobrir a lógica LINQ dos serviços.
-- **Testcontainers.PostgreSql** nos testes de controller — sobe um PostgreSQL 17 Alpine real, aplica as migrations e testa o fluxo HTTP completo incluindo autenticação JWT, serialização JSON e validações.
+A premissa é que cada camada testa apenas a sua responsabilidade. O service é testado de ponta a ponta com EF (incluindo as queries reais). O controller é testado isoladamente — não precisa de DB porque só verifica o que ele controla (routing, status, headers).
 
-### WebApplicationFactory com override de DbContext
+### IntegrationWebAppFactory com mocks injetados
 
-O `IntegrationWebAppFactory` herda de `WebApplicationFactory<Program>` e implementa `IAsyncLifetime`. No `ConfigureWebHost`, remove o `DbContextOptions<AppDbContext>` registrado pelo `Program.cs` e o substitui pela connection string do container de teste. As migrations são aplicadas no `InitializeAsync`, antes de qualquer teste.
+A factory expõe os três mocks como propriedades públicas (`AuthService`, `NoteService`, `NoteGroupService`). Cada classe de teste implementa `IAsyncLifetime` e chama `factory.ResetMocks()` no `InitializeAsync`, garantindo que setups de um teste não vazem para o próximo.
 
-O `Program.cs` precisou de uma linha adicional no final para expor a classe gerada por top-level statements ao assembly de testes:
+No `ConfigureWebHost`, a factory:
+- Seta `UseEnvironment("Testing")`.
+- Remove `DbContextOptions<AppDbContext>`, `AppDbContext` e os três `IXxxService` da DI.
+- Injeta os mocks como `Scoped`.
 
-```csharp
-public partial class Program { }
-```
+### Guard no `Program.cs`
+
+`db.Database.Migrate()` no startup é skipado quando `Environment == "Testing"`. Isso é necessário porque a factory remove o `AppDbContext` da DI — sem o guard, o startup explodiria tentando resolvê-lo. É também defesa em profundidade: garante que testes nunca acidentalmente toquem o Postgres local.
+
+### AuthHelper — JWT direto, sem hop pelo `/auth/register`
+
+Como o `AuthService` é mockado, não há banco para registrar um usuário. O `AuthHelper.CreateToken(userId)` emite um JWT diretamente, assinado com o mesmo `Jwt:Secret` de `appsettings.Testing.json`. O middleware JWT do ASP.NET valida apenas a assinatura/claims — não precisa de persistência.
 
 ### Factories com Bogus
 
-As três factories (`UserFactory`, `NoteFactory`, `NoteGroupFactory`) usam a biblioteca Bogus com locale `pt_BR`. Isso garante dados únicos por chamada, evitando colisões de email e outros campos únicos quando testes rodam em paralelo.
+`UserFactory`, `NoteFactory`, `NoteGroupFactory` usam Bogus com locale `pt_BR`. Dados únicos por chamada, evitando colisões mesmo em runs paralelos.
 
-### AuthHelper
+### `public partial class Program { }`
 
-Utilitário estático que registra um usuário via HTTP e retorna o JWT, além de um método de extensão `WithJwt(token)` no `HttpClient`. Elimina a repetição de setup de autenticação nos testes de controller.
+Linha extra no final do `Program.cs` para expor a classe top-level statement ao assembly de testes (`WebApplicationFactory<Program>`).
 
 ---
 
-## Cobertura planejada
+## Cobertura atual
 
-| Componente | Casos de teste | Banco |
+| Componente | Casos | Estratégia |
 |---|---|---|
-| `AuthService` | 6 | InMemory |
-| `NoteService` | 9 | InMemory |
-| `NoteGroupService` | 7 | InMemory |
-| `AuthController` | 4 | Testcontainers |
-| `NotesController` | 9 | Testcontainers |
-| `NoteGroupsController` | 7 | Testcontainers |
+| `AuthService` | 13 | InMemory (inclui `RefreshAsync` e `RevokeAsync`) |
+| `NoteService` | 8 | InMemory |
+| `NoteGroupService` | 8 | InMemory |
+| `AuthController` | 8 | Mock + WebApplicationFactory |
+| `NotesController` | 11 | Mock + WebApplicationFactory |
+| `NoteGroupsController` | 9 | Mock + WebApplicationFactory |
 
-Total: **42 casos de teste** cobrindo os caminhos principais e de erro, incluindo isolamento entre usuários em todos os recursos.
+Total: **60 testes**. Tempo de execução: ~3 segundos.
 
 ---
 
 ## Como rodar
 
 ```bash
-# Apenas os testes (requer Docker para os de controller)
 dotnet test tests/Notely.Tests
+```
 
-# Com relatório de cobertura
+Não precisa de Docker, não precisa de Postgres local. O suite roda em qualquer ambiente com .NET 8 SDK instalado.
+
+Cobertura:
+
+```bash
 dotnet test tests/Notely.Tests \
   /p:CollectCoverage=true \
   /p:CoverletOutputFormat=cobertura \
   /p:Exclude="[Notely.Tests]*"
 ```
 
-Os testes de serviço rodam sem Docker. Os de controller sobem e derrubam o container automaticamente via `IAsyncLifetime`.
-
 ---
 
 ## Arquivos modificados no projeto principal
 
-- `src/Notely.Api/Program.cs` — adicionado `public partial class Program { }` no final, necessário para o `WebApplicationFactory<Program>` enxergar a classe no assembly de testes.
+- `src/Notely.Api/Program.cs` — guard no `Migrate()` para o ambiente `Testing`; `public partial class Program { }` no final.
+- `src/Notely.Api/Services/I*.cs` — interfaces extraídas (`IAuthService`, `INoteService`, `INoteGroupService`). Os controllers já dependiam das implementações concretas; passaram a depender das interfaces, o que viabiliza o mock na DI.
